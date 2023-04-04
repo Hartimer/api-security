@@ -1,8 +1,13 @@
 package server
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -66,11 +71,6 @@ func (s *Server) Private(w http.ResponseWriter, r *http.Request) {
 	apiKey := r.Header.Get(APIKeyHeader)
 	if err := checkAPIKey(apiKey); err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		resp := Message{Content: err.Error()}
-		if err := json.NewEncoder(w).Encode(&resp); err != nil {
-			log.Printf("Failed to write response: %+v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-		}
 		return
 	}
 	resp := Message{Content: "Hi there in private"}
@@ -82,20 +82,52 @@ func (s *Server) Private(w http.ResponseWriter, r *http.Request) {
 
 // TamperProof responds to request with a valid API key and HMAC
 func (s *Server) TamperProof(w http.ResponseWriter, r *http.Request) {
-	// apiKey := r.Header.Get(APIKeyHeader)
-	// if err := checkAPIKey(apiKey); err != nil {
-	// 	w.WriteHeader(http.StatusUnauthorized)
-	// 	resp := Message{Content: err.Error()}
-	// 	if err := json.NewEncoder(w).Encode(&resp); err != nil {
-	// 		log.Printf("Failed to write response: %+v", err)
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 	}
-	// 	return
-	// }
-	// hmacValue := r.Header.Get(HMACHeader)
+	apiKey := r.Header.Get(APIKeyHeader)
+	if err := checkAPIKey(apiKey); err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	hmacValue := r.Header.Get(HMACHeader)
+	if hmacValue == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
+	defer r.Body.Close()
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	requestHMACResult, err := hex.DecodeString(hmacValue)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	hasher := hmac.New(sha256.New, []byte(apiKey))
+	if _, err := hasher.Write(bodyBytes); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	hmacResult := hasher.Sum(nil)
+	if !bytes.Equal(requestHMACResult, hmacResult) {
+		w.WriteHeader(http.StatusUnauthorized)
+		resp := Message{Content: "HMACs do not match"}
+		if err := json.NewEncoder(w).Encode(&resp); err != nil {
+			log.Printf("Failed to write response: %+v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	resp := Message{Content: "verified"}
+	if err := json.NewEncoder(w).Encode(&resp); err != nil {
+		log.Printf("Failed to write response: %+v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
+// NonRepudiation responds to request with a valid digital signature
 func (s *Server) NonRepudiation(w http.ResponseWriter, r *http.Request) {
 
 }
