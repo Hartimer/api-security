@@ -63,7 +63,7 @@ func TestPrivate(t *testing.T) {
 	defer httpServer.Close()
 
 	// When we request private endpoint without a key
-	req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/v1/private", nil)
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/private", nil)
 	require.NoError(t, err)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestPrivate(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
 	// When we request private endpoint with an invalid key
-	req, err = http.NewRequest(http.MethodGet, httpServer.URL+"/v1/private", nil)
+	req, err = http.NewRequest(http.MethodPost, httpServer.URL+"/v1/private", nil)
 	require.NoError(t, err)
 	req.Header.Add(server.APIKeyHeader, "lowercase_key")
 	resp, err = http.DefaultClient.Do(req)
@@ -82,7 +82,7 @@ func TestPrivate(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
 	// When we request private endpoint with an valid key
-	req, err = http.NewRequest(http.MethodGet, httpServer.URL+"/v1/private", nil)
+	req, err = http.NewRequest(http.MethodPost, httpServer.URL+"/v1/private", nil)
 	require.NoError(t, err)
 	req.Header.Add(server.APIKeyHeader, "UPPERCASE_KEY")
 	resp, err = http.DefaultClient.Do(req)

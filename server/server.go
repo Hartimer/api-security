@@ -45,7 +45,7 @@ func (s *Server) Routes() []Route {
 		},
 		{
 			"Private",
-			http.MethodGet,
+			http.MethodPost,
 			"/v1/private",
 			s.Private,
 		},
@@ -85,7 +85,7 @@ func (s *Server) Public(w http.ResponseWriter, _ *http.Request) {
 // Private responds to requests that have a valid API Key
 //
 // Example call:
-// curl -sSL -XGET -H "X-API-Key: MY_KEY" localhost:8080/v1/private
+// curl -sSL -XPOST -H "X-API-Key: MY_KEY" localhost:8080/v1/private
 func (s *Server) Private(w http.ResponseWriter, r *http.Request) {
 	apiKey := r.Header.Get(APIKeyHeader)
 	if err := checkAPIKey(apiKey); err != nil {
@@ -159,7 +159,7 @@ func (s *Server) Checksum(w http.ResponseWriter, r *http.Request) {
 // export CONTENT="secret"
 // export API_KEY="MY_KEY"
 // export CONTENT_HMAC=$(echo -n "$CONTENT" | hmac256 $API_KEY)
-// echo -n "$CONTENT" | curl -sSL -XPOST -H "X-API-Key: $API_KEY" -H "X-HMAC: $CONTENT_HMAC" -d @- "localhost:8080/v1/tamperproof"
+// echo -n "$CONTENT" | curl -sSL -XPOST -H "X-API-Key: $API_KEY" -H "X-HMAC: $CONTENT_HMAC" -d @- localhost:8080/v1/tamperproof
 func (s *Server) TamperProof(w http.ResponseWriter, r *http.Request) {
 	apiKey := r.Header.Get(APIKeyHeader)
 	if err := checkAPIKey(apiKey); err != nil {
@@ -220,7 +220,7 @@ func (s *Server) TamperProof(w http.ResponseWriter, r *http.Request) {
 // export PRIVATE_KEY=$(openssl ecparam -genkey -name secp384r1 -noout)
 // export PUBLIC_KEY=$(openssl ec -in <(echo "$PRIVATE_KEY") -pubout | head -n -1 | tail -n +2 | base64 -d | xxd -p -c 256)
 // export SIGNATURE=$(echo -n $CONTENT | sha256sum - | cut -d' ' -f 1 | xxd -r -p | openssl pkeyutl -sign -inkey <(echo "$PRIVATE_KEY") | xxd -p -c 256)
-// echo -n "$CONTENT" | curl -sSL -XPOST -H "X-API-Key: $API_KEY" -H "X-Public-Key: $PUBLIC_KEY" -H "X-Signature: $SIGNATURE" -d @- "localhost:8080/v1/nonrepudiation"
+// echo -n "$CONTENT" | curl -sSL -XPOST -H "X-API-Key: $API_KEY" -H "X-Public-Key: $PUBLIC_KEY" -H "X-Signature: $SIGNATURE" -d @- localhost:8080/v1/nonrepudiation
 func (s *Server) NonRepudiation(w http.ResponseWriter, r *http.Request) {
 	apiKey := r.Header.Get(APIKeyHeader)
 	if err := checkAPIKey(apiKey); err != nil {
