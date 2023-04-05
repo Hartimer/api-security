@@ -92,6 +92,58 @@ func TestPrivate(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestChecksum(t *testing.T) {
+	// Given a server
+	httpServer := initiateServer()
+	defer httpServer.Close()
+	apiKey := "UPPERCASE_KEY"
+	message := []byte("secret")
+
+	// When we request checksum endpoint with valid hash
+	hasher := sha256.New()
+	_, err := hasher.Write(message)
+	require.NoError(t, err)
+	checksum := hasher.Sum(nil)
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/checksum", bytes.NewReader(message))
+	require.NoError(t, err)
+	req.Header.Add(server.APIKeyHeader, apiKey)
+	req.Header.Add(server.ChecksumHeader, hex.EncodeToString(checksum))
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	// Then it succeeds
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// And we get expected message
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(bodyBytes), "verified")
+
+	// When we request checksum endpoint with invalid hash
+	hasher = sha256.New()
+	_, err = hasher.Write(message)
+	require.NoError(t, err)
+	_, err = hasher.Write([]byte("MORE_FAKE_DATA"))
+	require.NoError(t, err)
+	checksum = hasher.Sum(nil)
+	req, err = http.NewRequest(http.MethodPost, httpServer.URL+"/v1/checksum", bytes.NewReader(message))
+	require.NoError(t, err)
+	req.Header.Add(server.APIKeyHeader, apiKey)
+	req.Header.Add(server.ChecksumHeader, hex.EncodeToString(checksum))
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	// Then it fails
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	// And we get expected message
+	defer resp.Body.Close()
+	bodyBytes, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(bodyBytes), "invalid checksum")
+}
+
 func TestTamperProof(t *testing.T) {
 	// Given a server
 	httpServer := initiateServer()
@@ -134,6 +186,12 @@ func TestTamperProof(t *testing.T) {
 
 	// Then it fails
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	// And we get expected message
+	defer resp.Body.Close()
+	bodyBytes, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(bodyBytes), "invalid HMAC")
 }
 
 func TestNonRepudiation(t *testing.T) {

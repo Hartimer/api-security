@@ -19,6 +19,7 @@ import (
 
 const (
 	APIKeyHeader    = "X-API-Key"
+	ChecksumHeader  = "X-Checksum"
 	HMACHeader      = "X-HMAC"
 	SignatureHeader = "X-Signature"
 	PublicKeyHeader = "X-Public-Key"
@@ -47,6 +48,12 @@ func (s *Server) Routes() []Route {
 			http.MethodGet,
 			"/v1/private",
 			s.Private,
+		},
+		{
+			"Checksum",
+			http.MethodPost,
+			"/v1/checksum",
+			s.Checksum,
 		},
 		{
 			"TamperProof",
@@ -87,6 +94,59 @@ func (s *Server) Private(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := Message{Content: "Hi there in private"}
+	if err := json.NewEncoder(w).Encode(&resp); err != nil {
+		log.Printf("%+v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+// Checksum responds to request with a valid API key and SHA256 checksum
+//
+// Example call:
+// export CONTENT="secret"
+// export CONTENT_CHECKSUM=$(echo -n "$CONTENT" | sha256sum | cut -d' ' -f 1)
+// echo -n "$CONTENT" | curl -sSL -XPOST -H "X-API-Key: MY_KEY" -H "X-Checksum: $CONTENT_CHECKSUM" -d @- "localhost:8080/v1/checksum"
+func (s *Server) Checksum(w http.ResponseWriter, r *http.Request) {
+	apiKey := r.Header.Get(APIKeyHeader)
+	if err := checkAPIKey(apiKey); err != nil {
+		log.Printf("%+v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	checksumValue := r.Header.Get(ChecksumHeader)
+	if checksumValue == "" {
+		log.Println("missing checksum")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("%+v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	hasher := sha256.New()
+	if _, err := hasher.Write(bodyBytes); err != nil {
+		log.Printf("%+v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	calculatedChecksum := hex.EncodeToString(hasher.Sum(nil))
+	if checksumValue != calculatedChecksum {
+		log.Println("invalid checksum")
+		w.WriteHeader(http.StatusUnauthorized)
+		resp := Message{Content: "invalid checksum"}
+		if err := json.NewEncoder(w).Encode(&resp); err != nil {
+			log.Printf("%+v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	resp := Message{Content: "verified"}
 	if err := json.NewEncoder(w).Encode(&resp); err != nil {
 		log.Printf("%+v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -138,7 +198,7 @@ func (s *Server) TamperProof(w http.ResponseWriter, r *http.Request) {
 	if !bytes.Equal(requestHMACResult, hmacResult) {
 		log.Println("invalid HMAC")
 		w.WriteHeader(http.StatusUnauthorized)
-		resp := Message{Content: "HMACs do not match"}
+		resp := Message{Content: "invalid HMAC"}
 		if err := json.NewEncoder(w).Encode(&resp); err != nil {
 			log.Printf("%+v", err)
 			w.WriteHeader(http.StatusInternalServerError)
